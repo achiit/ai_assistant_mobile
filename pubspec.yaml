@@ -40,6 +40,7 @@ dependencies:
   speech_to_text: ^7.0.0
   flutter_tts: ^4.2.1
   google_mlkit_text_recognition: ^0.14.0
+  shared_preferences: ^2.3.5
   # google_ml_kit: ^0.19.0
 
 

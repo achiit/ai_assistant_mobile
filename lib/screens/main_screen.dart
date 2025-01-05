@@ -1,12 +1,14 @@
 // lib/screens/main_screen.dart
 
 import 'package:ai_assistant/camera_overlay.dart';
+import 'package:ai_assistant/screens/settings_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter/services.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'dart:async';
 import 'dart:io';
@@ -50,8 +52,11 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   Future<void> _setupTts() async {
     _flutterTts = FlutterTts();
-    await _flutterTts.setLanguage('en-US');
-    await _flutterTts.setSpeechRate(0.5);
+// In MainScreen's initState
+    final prefs = await SharedPreferences.getInstance();
+    await _flutterTts.setSpeechRate(prefs.getDouble('speechRate') ?? 0.5);
+    await _flutterTts.setLanguage(prefs.getString('language') ?? 'en-US');
+    await _flutterTts.setVolume(prefs.getDouble('volume') ?? 1.0);
     await _flutterTts.setPitch(1.0);
 
     _flutterTts.setCompletionHandler(() {
@@ -311,30 +316,30 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     await _speakSol(solution);
   }
 
-Future<void> _speakSol(String text) async {
-  try {
-    // Enable awaitSpeakCompletion
-    await _flutterTts.awaitSpeakCompletion(true);
+  Future<void> _speakSol(String text) async {
+    try {
+      // Enable awaitSpeakCompletion
+      await _flutterTts.awaitSpeakCompletion(true);
 
-    if (_isSpeaking) {
-      await _flutterTts.stop();
+      if (_isSpeaking) {
+        await _flutterTts.stop();
+      }
+
+      setState(() => _isSpeaking = true);
+
+      // Start speaking
+      await _flutterTts.speak(text);
+
+      // Wait for speech completion
+      debugPrint("Waiting for TTS to complete...");
+    } catch (e) {
+      print('Error speaking: $e');
+    } finally {
+      // Ensure resetDetection is called after speech ends
+      setState(() => _isSpeaking = false);
+      _resetDetection();
     }
-
-    setState(() => _isSpeaking = true);
-
-    // Start speaking
-    await _flutterTts.speak(text);
-
-    // Wait for speech completion
-    debugPrint("Waiting for TTS to complete...");
-  } catch (e) {
-    print('Error speaking: $e');
-  } finally {
-    // Ensure resetDetection is called after speech ends
-    setState(() => _isSpeaking = false);
-    _resetDetection();
   }
-}
 
   // Future<void> _confirmProblem() async {
   //   setState(() {
@@ -380,9 +385,8 @@ Future<void> _speakSol(String text) async {
       Format your response exactly like this:
       1. Let's understand the problem.
       2. Here's how we solve it:
-      3. Step 1: [First step explanation]
-      4. Step 2: [Second step explanation]
-      5. Therefore, the answer is [final answer].
+      3. Explaination here
+      4. Therefore, the answer is [final answer].
       
       Keep each step clear and easy to understand. Dont include any symbols only text and numbers. Dont give anything in bold. 
       Use periods to separate sentences clearly.
@@ -440,135 +444,152 @@ Future<void> _speakSol(String text) async {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Column(
+      body: Stack(
         children: [
-          // Top Section with Camera
-          Expanded(
-            flex: 3,
-            child: Stack(
-              children: [
-                // Camera or Start Button
-                Container(
-                  color: Color(0xFF1A1A1A),
-                  child: Center(
-                    child: _isCameraInitialized
-                        ? _buildCameraPreview()
-                        : _buildStartButton(),
-                  ),
-                ),
-                // Capture Box Overlay
-                if (_isCameraInitialized)
-                  Center(
-                    child: Container(
-                      width: MediaQuery.of(context).size.width * 0.8,
-                      height: MediaQuery.of(context).size.width * 0.6,
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: Color(0xFF5CE1FF),
-                          width: 3,
-                        ),
-                        borderRadius: BorderRadius.circular(20),
+          Column(
+            children: [
+              // Top Section with Camera
+              Expanded(
+                flex: 3,
+                child: Stack(
+                  children: [
+                    // Camera or Start Button
+                    Container(
+                      color: Color(0xFF1A1A1A),
+                      child: Center(
+                        child: _isCameraInitialized
+                            ? _buildCameraPreview()
+                            : _buildStartButton(),
                       ),
-                      child: Stack(
-                        children: [
-                          Positioned(
-                            top: -30,
-                            left: 0,
-                            right: 0,
-                            child: Container(
-                              margin: EdgeInsets.symmetric(horizontal: 20),
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Color(0xFF5CE1FF),
-                                borderRadius: BorderRadius.circular(8),
-                                boxShadow: [
-                                  BoxShadow(
-                                    offset: Offset(2, 2),
-                                    color: Colors.black,
-                                    blurRadius: 0,
+                    ),
+                    // Capture Box Overlay
+                    if (_isCameraInitialized)
+                      Center(
+                        child: Container(
+                          width: MediaQuery.of(context).size.width * 0.8,
+                          height: MediaQuery.of(context).size.width * 0.6,
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: Color(0xFF5CE1FF),
+                              width: 3,
+                            ),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Stack(
+                            children: [
+                              Positioned(
+                                top: -30,
+                                left: 0,
+                                right: 0,
+                                child: Container(
+                                  margin: EdgeInsets.symmetric(horizontal: 20),
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 8,
                                   ),
-                                ],
-                              ),
-                              child: Text(
-                                'Show problem here',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: Colors.black,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
+                                  decoration: BoxDecoration(
+                                    color: Color(0xFF5CE1FF),
+                                    borderRadius: BorderRadius.circular(8),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        offset: Offset(2, 2),
+                                        color: Colors.black,
+                                        blurRadius: 0,
+                                      ),
+                                    ],
+                                  ),
+                                  child: Text(
+                                    'Show problem here',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: Colors.black,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
-                    ),
-                  ),
 
-                // Voice Indicator
-                Positioned(
-                  top: 40,
-                  right: 20,
-                  child: GestureDetector(
-                    onTap: _startVoiceListening,
-                    child: Container(
-                      padding: EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: _isListening
-                            ? Color(0xFF5CFF8F)
-                            : Color(0xFFFF5C5C),
-                        borderRadius: BorderRadius.circular(30),
-                        boxShadow: [
-                          BoxShadow(
-                            offset: Offset(2, 2),
-                            color: Colors.black,
-                            blurRadius: 0,
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            _isListening ? Icons.mic : Icons.mic_off,
-                            color: Colors.black,
-                            size: 24,
-                          ),
-                          if (_isListening) ...[
-                            SizedBox(width: 8),
-                            Text(
-                              'Listening',
-                              style: TextStyle(
+                    // Voice Indicator
+                    Positioned(
+                      top: 40,
+                      right: 20,
+                      child: GestureDetector(
+                        onTap: _startVoiceListening,
+                        child: Container(
+                          padding: EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: _isListening
+                                ? Color(0xFF5CFF8F)
+                                : Color(0xFFFF5C5C),
+                            borderRadius: BorderRadius.circular(30),
+                            boxShadow: [
+                              BoxShadow(
+                                offset: Offset(2, 2),
                                 color: Colors.black,
-                                fontWeight: FontWeight.bold,
+                                blurRadius: 0,
                               ),
-                            ),
-                          ],
-                        ],
+                            ],
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                _isListening ? Icons.mic : Icons.mic_off,
+                                color: Colors.black,
+                                size: 24,
+                              ),
+                              if (_isListening) ...[
+                                SizedBox(width: 8),
+                                Text(
+                                  'Listening',
+                                  style: TextStyle(
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
                       ),
                     ),
-                  ),
+                  ],
                 ),
-              ],
-            ),
-          ),
+              ),
 
-          // Bottom Section with Chat and Controls
-          Container(
-            height: MediaQuery.of(context).size.height * 0.4,
-            child: Column(
-              children: [
-                if (_lastDetectedText.isNotEmpty && !_isProblemConfirmed)
-                  _buildConfirmationBar(),
-                Expanded(
-                  child: _buildChatArea(),
+              // Bottom Section with Chat and Controls
+              Container(
+                height: MediaQuery.of(context).size.height * 0.4,
+                child: Column(
+                  children: [
+                    if (_lastDetectedText.isNotEmpty && !_isProblemConfirmed)
+                      _buildConfirmationBar(),
+                    Expanded(
+                      child: _buildChatArea(),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
+          Positioned(
+            top: 40,
+            child: IconButton(
+              icon: Icon(
+                Icons.settings,
+                size: 45,
+              ),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => SettingsScreen()),
+              ),
+            ),
+          )
         ],
       ),
     );
