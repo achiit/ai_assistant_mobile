@@ -1,4 +1,4 @@
-```markdown
+
 # Dear Comrades,
 
 Welcome to the era of **AegisAI** – your very own tech-savvy assistant that could give Tony Stark’s JARVIS a run for its money! While it may not yet have a British accent or holograms flying around, it does have the brains and brawn to make you feel like a tech wizard.
@@ -92,6 +92,11 @@ Imagine you’re stuck with a math problem, or worse, having a facepalm moment t
 4. **Speak Like a Boss**:
    - Say "Start Camera" to turn on the camera.
    - Point a math problem at the screen, and let AegisAI handle the rest.
+
+---
+
+### **Demo App**
+- You can download the app [here](https://drive.google.com/file/d/1atNbTrYLePlYX2u0iGufGQ5CuTLdm2u1/view?usp=sharing).
 
 ---
 
