@@ -5,7 +5,7 @@ Welcome to the era of **AegisAI** – your very own tech-savvy assistant that co
 
 ---
 
-## ![AegisAI Logo](assets/icons/icon.png)
+## ![AegisAI Logo](assets/icon/icon.png)
 
 ---
 
@@ -127,5 +127,5 @@ Go ahead, comrades. Unleash the power of AegisAI. And remember, with great power
 
 Cheers,  
 The AegisAI Dev Team 💪
-```
+
 
