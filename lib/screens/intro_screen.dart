@@ -1,5 +1,6 @@
 // lib/screens/intro_screen.dart
 
+import 'package:ai_assistant/screens/task_select_screen.dart';
 import 'package:flutter/material.dart';
 import 'main_screen.dart';
 
@@ -97,7 +98,7 @@ class IntroScreen extends StatelessWidget {
               child: GestureDetector(
                 onTap: () => Navigator.pushReplacement(
                   context,
-                  MaterialPageRoute(builder: (_) => const MainScreen()),
+                  MaterialPageRoute(builder: (_) => TaskSelectionScreen()),
                 ),
                 child: Container(
                   width: double.infinity,

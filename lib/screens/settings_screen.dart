@@ -1,8 +1,5 @@
-// lib/screens/settings_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
-
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -15,12 +12,12 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   late FlutterTts _flutterTts;
   late SharedPreferences _prefs;
-  
+
   // Settings state
   double _speechRate = 0.5;
   String _language = 'en-US';
   double _volume = 1.0;
-  
+
   // Available options
   final List<Map<String, String>> _languages = [
     {'code': 'en-US', 'name': 'English (US)'},
@@ -28,6 +25,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     {'code': 'es-ES', 'name': 'Spanish'},
     {'code': 'fr-FR', 'name': 'French'},
     {'code': 'de-DE', 'name': 'German'},
+    {'code': 'hi-IN', 'name': 'Hindi'}, // Added Hindi
   ];
 
   @override
@@ -39,7 +37,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _initializeSettings() async {
     _flutterTts = FlutterTts();
     _prefs = await SharedPreferences.getInstance();
-    
+
     // Load saved settings or use defaults
     setState(() {
       _speechRate = _prefs.getDouble('speechRate') ?? 0.5;
@@ -55,7 +53,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _flutterTts.setLanguage(_language);
     await _flutterTts.setSpeechRate(_speechRate);
     await _flutterTts.setVolume(_volume);
-    
+
     // Save settings
     await _prefs.setDouble('speechRate', _speechRate);
     await _prefs.setString('language', _language);
@@ -167,6 +165,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: DropdownButton<String>(
               value: _language,
               isExpanded: true,
+              dropdownColor: Colors.white, // Ensures dropdown is visible
               underline: SizedBox(),
               icon: Icon(Icons.arrow_drop_down, color: Colors.black),
               items: _languages.map((lang) {

@@ -1,5 +1,7 @@
 // lib/screens/main_screen.dart
 
+import 'dart:developer';
+
 import 'package:ai_assistant/camera_overlay.dart';
 import 'package:ai_assistant/screens/settings_screen.dart';
 import 'package:flutter/material.dart';
@@ -14,7 +16,14 @@ import 'dart:async';
 import 'dart:io';
 
 class MainScreen extends StatefulWidget {
-  const MainScreen({Key? key}) : super(key: key);
+  final String mode; // 'math' or 'translation'
+  final VoidCallback onTaskComplete;
+
+  const MainScreen({
+    Key? key,
+    required this.mode,
+    required this.onTaskComplete,
+  }) : super(key: key);
 
   @override
   _MainScreenState createState() => _MainScreenState();
@@ -22,6 +31,9 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   late final TextRecognizer _textRecognizer;
+  bool _isContinuousListening = true;
+  bool _isInitialized = false; // Add this at the start of your class
+
   late final GenerativeModel _model;
   late final FlutterTts _flutterTts;
   late final SpeechToText _speechToText;
@@ -46,8 +58,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     _initializeServices();
-    _startVoiceListening();
-    _setupTts(); // Add this line
+    _setupTts();
   }
 
   Future<void> _setupTts() async {
@@ -119,26 +130,48 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _startVoiceListening() async {
-    if (!_isListening && await _speechToText.initialize()) {
-      setState(() => _isListening = true);
-      _speechToText.listen(
-        onResult: (result) {
-          if (result.finalResult) {
-            _handleVoiceCommand(result.recognizedWords.toLowerCase());
-          }
-        },
-        listenFor: Duration(seconds: 30),
-        pauseFor: Duration(seconds: 3),
-        partialResults: false,
-        listenMode: ListenMode.confirmation,
-        cancelOnError: true,
-      );
+  Future<void> _toggleVoiceListening() async {
+    if (_isListening) {
+      await _stopVoiceListening();
+    } else {
+      await _startVoiceListening();
     }
   }
 
-  void _stopVoiceListening() {
-    _speechToText.stop();
+  Future<void> _startVoiceListening() async {
+    if (_isListening) return;
+
+    try {
+      if (!_isInitialized) {
+        _isInitialized = await _speechToText.initialize(
+          onError: (error) => print('Speech recognition error: $error'),
+          onStatus: (status) => print('Speech recognition status: $status'),
+        );
+      }
+
+      if (_isInitialized) {
+        setState(() => _isListening = true);
+        await _speechToText.listen(
+          onResult: (result) {
+            if (result.finalResult) {
+              _handleVoiceCommand(result.recognizedWords.toLowerCase());
+            }
+          },
+          listenFor: const Duration(seconds: 30),
+          pauseFor: const Duration(seconds: 3),
+          partialResults: false,
+          listenMode: ListenMode.confirmation,
+          cancelOnError: false,
+        );
+      }
+    } catch (e) {
+      print('Error in voice listening: $e');
+      setState(() => _isListening = false);
+    }
+  }
+
+  Future<void> _stopVoiceListening() async {
+    await _speechToText.stop();
     setState(() => _isListening = false);
   }
 
@@ -194,8 +227,15 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         }
       });
 
-      _addMessage("Camera ready! Show your math problem in the box.", false);
-      await _speak("Camera ready! Show your math problem in the box.");
+      // In _initializeCamera method:
+      _addMessage(
+          widget.mode == 'math'
+              ? "Camera ready! Show your math problem in the box."
+              : "Camera ready! Show the text you want to translate in the box.",
+          false);
+      await _speak(widget.mode == 'math'
+          ? "Camera ready! Show your math problem in the box."
+          : "Camera ready! Show the text you want to translate in the box.");
     } catch (e) {
       print('Error initializing camera: $e');
     }
@@ -251,10 +291,21 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           _lastDetectedText = textInBox;
         });
 
+        // Customize message based on mode
+        String confirmMessage = widget.mode == 'math'
+            ? "I see this problem: $textInBox. Is this correct?"
+            : "I see this text: $textInBox. Should I translate it?";
+
+        // In _confirmProblem method:
         _addMessage(
-            "I see: $textInBox\nIs this correct? Say 'yes' or tap confirm.",
+            widget.mode == 'math'
+                ? "Solving: $_lastDetectedText"
+                : "Translating: $_lastDetectedText",
             false);
-        await _speak("I see this problem: $textInBox. Is this correct?");
+        await _speak(widget.mode == 'math'
+            ? "Alright, let me solve this for you!"
+            : "Alright, let me translate this for you!");
+        await _speak(confirmMessage);
       }
     } catch (e) {
       print('Error processing image: $e');
@@ -290,12 +341,46 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     }
   }
 
+// Replace _isMathProblem method:
   bool _isMathProblem(String text) {
-    // Enhanced math problem detection
-    final hasNumbers = RegExp(r'\d').hasMatch(text);
-    final hasOperators = RegExp(r'[+\-*/=×÷]').hasMatch(text);
-    final isReasonableLength = text.length >= 2 && text.length <= 50;
-    return isReasonableLength && hasNumbers && hasOperators;
+    if (widget.mode == 'translation') {
+      // For translation, accept any reasonable text
+      return text.length >= 2 &&
+          text.length <= 500 &&
+          text.trim().split(' ').length > 1; // At least 2 words
+    } else {
+      // For math mode, keep existing math detection logic
+      final hasNumbers = RegExp(r'\d').hasMatch(text);
+      final hasBasicOperators = RegExp(r'[+\-*/=×÷]').hasMatch(text);
+      final hasAdvancedOperators = RegExp(r'[∫∂√∑∏≠≈≤≥±]').hasMatch(text);
+      final hasVariables = RegExp(r'[a-zA-Z]').hasMatch(text);
+      final isReasonableLength = text.length >= 2 && text.length <= 200;
+
+      return isReasonableLength &&
+          (hasBasicOperators ||
+              hasAdvancedOperators ||
+              (hasNumbers && hasVariables));
+    }
+    // // Check if it's a translation request first
+    // if (text.toLowerCase().contains('translate') ||
+    //     text.toLowerCase().contains('in hindi') ||
+    //     text.toLowerCase().contains('in english') ||
+    //     text.toLowerCase().contains('to hindi') ||
+    //     text.toLowerCase().contains('to english')) {
+    //   return true;
+    // }
+
+    // // Then check if it's a math problem
+    // final hasNumbers = RegExp(r'\d').hasMatch(text);
+    // final hasBasicOperators = RegExp(r'[+\-*/=×÷]').hasMatch(text);
+    // final hasAdvancedOperators = RegExp(r'[∫∂√∑∏≠≈≤≥±]').hasMatch(text);
+    // final hasVariables = RegExp(r'[a-zA-Z]').hasMatch(text);
+    // final isReasonableLength = text.length >= 2 && text.length <= 200;
+
+    // return isReasonableLength &&
+    //     (hasBasicOperators ||
+    //         hasAdvancedOperators ||
+    //         (hasNumbers && hasVariables));
   }
 
   Future<void> _confirmProblem() async {
@@ -337,73 +422,82 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     } finally {
       // Ensure resetDetection is called after speech ends
       setState(() => _isSpeaking = false);
-      _resetDetection();
+      Future.delayed(Duration(seconds: 1));
+      widget.onTaskComplete();
+
+      // _resetDetection();
     }
   }
 
-  // Future<void> _confirmProblem() async {
-  //   setState(() {
-  //     _isProblemConfirmed = true;
-  //     _isThinking = true;
-  //   });
-
-  //   _addMessage("I'm thinking about this problem...", false);
-  //   await _speak("Let me think about this problem");
-
-  //   try {
-  //     // Get the solution
-  //     final solution = await _solveProblem(_lastDetectedText);
-
-  //     setState(() {
-  //       _isThinking = false;
-  //     });
-
-  //     // Add the complete solution to chat
-  //     _addMessage(solution, false);
-
-  //     // Speak the complete solution
-  //     await _speakSolution(solution);
-
-  //     // Small delay before resetting
-  //     // await Future.delayed(Duration(seconds: 2));
-  //   } catch (e) {
-  //     print('Error in confirmation: $e');
-  //     setState(() {
-  //       _isThinking = false;
-  //     });
-  //     _addMessage("Sorry, I had trouble with that. Let's try again.", false);
-  //     await _speak("Sorry, I had trouble with that. Let's try again.");
-  //   }
-
-  //   _resetDetection();
-  // }
   Future<String> _solveProblem(String problem) async {
     try {
-      final prompt = '''
-      You are a helpful math tutor. Solve this problem step by step: $problem
-      
-      Format your response exactly like this:
-      1. Let's understand the problem.
-      2. Here's how we solve it:
-      3. Explaination here
-      4. Therefore, the answer is [final answer].
-      
-      Keep each step clear and easy to understand. Dont include any symbols only text and numbers. Dont give anything in bold. 
-      Use periods to separate sentences clearly.
+      String prompt;
+      if (widget.mode == 'translation') {
+        prompt = '''
+  You are a professional translator. Translate the following text clearly and concisely:
+  $problem
+
+  Ensure your response is:
+  1. Start with "Translation:"
+  2. If translating to Hindi, provide both Devanagari and romanized versions
+  3. If requested, explain any cultural context or idioms
+  4. Use simple, clear language...give only and only the translated text nothing else
+  ''';
+      }
+      // Check if it's a calculus problem
+      else if (problem.toLowerCase().contains('differentiate') ||
+          problem.toLowerCase().contains('integrate') ||
+          problem.toLowerCase().contains('derivative')) {
+        prompt = '''
+      You are a calculus expert. Solve the following problem clearly for text-to-speech:
+      $problem
+
+      Respond with:
+      - A clear explanation of the steps in plain text.
+      - Use words for symbols (e.g., "squared" instead of "^2", "plus" instead of "+").
+      - Avoid any bold, italic, or formatting markers like stars (*).
+      - Conclude with "The final answer is [answer]" in simple text.
       ''';
+      }
+      // For other math problems
+      else {
+        prompt = '''
+      You are an expert mathematics tutor. Solve the following math problem clearly and concisely for text-to-speech:
+      $problem
+
+      Respond with:
+      - A step-by-step explanation in plain text.
+      - Use words to describe mathematical symbols (e.g., "times" for "*", "divided by" for "/").
+      - Avoid any formatting symbols like stars (*), carets (^), or slashes (/).
+      - Conclude with "The final answer is [answer]" in plain, readable text.
+      ''';
+      }
 
       final response = await _model.generateContent([Content.text(prompt)]);
-
       final solution = response.candidates.first.content.parts
           .whereType<TextPart>()
           .map((part) => part.text)
           .join(' ');
 
-      return solution;
+      // Post-process the solution to ensure full TTS compatibility
+      final cleanedSolution = _sanitizeResponseForTTS(solution);
+
+      return cleanedSolution;
     } catch (e) {
       print('Error solving problem: $e');
-      return "Sorry, I had trouble solving that. Could you show me the problem again?";
+      return "I encountered an error. Could you please show me the problem again?";
     }
+  }
+
+  String _sanitizeResponseForTTS(String response) {
+    return response
+        .replaceAll('*', '') // Remove stars
+        .replaceAll('^', ' to the power of ') // Replace carets for exponents
+        .replaceAll('/', ' divided by ') // Replace slashes for fractions
+        .replaceAll('*', ' times ') // Replace asterisks for multiplication
+        .replaceAll('+', ' plus ') // Replace addition symbols
+        .replaceAll('-', ' minus ') // Replace subtraction symbols
+        .replaceAll('=', ' equals '); // Replace equal signs
   }
 
   void _resetDetection() {
@@ -519,15 +613,16 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                       top: 40,
                       right: 20,
                       child: GestureDetector(
-                        onTap: _startVoiceListening,
+                        onTap: _toggleVoiceListening,
                         child: Container(
-                          padding: EdgeInsets.all(12),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 12),
                           decoration: BoxDecoration(
                             color: _isListening
-                                ? Color(0xFF5CFF8F)
-                                : Color(0xFFFF5C5C),
+                                ? const Color(0xFF5CFF8F)
+                                : const Color(0xFFFF5C5C),
                             borderRadius: BorderRadius.circular(30),
-                            boxShadow: [
+                            boxShadow: const [
                               BoxShadow(
                                 offset: Offset(2, 2),
                                 color: Colors.black,
@@ -543,16 +638,14 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                                 color: Colors.black,
                                 size: 24,
                               ),
-                              if (_isListening) ...[
-                                SizedBox(width: 8),
-                                Text(
-                                  'Listening',
-                                  style: TextStyle(
-                                    color: Colors.black,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                              const SizedBox(width: 8),
+                              Text(
+                                _isListening ? 'Stop' : 'Listen',
+                                style: const TextStyle(
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.bold,
                                 ),
-                              ],
+                              ),
                             ],
                           ),
                         ),
@@ -577,19 +670,88 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               ),
             ],
           ),
+          // Replace the existing Positioned widget in the build method with:
           Positioned(
             top: 40,
-            child: IconButton(
-              icon: Icon(
-                Icons.settings,
-                size: 45,
-              ),
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => SettingsScreen()),
+            left: 0,
+            right: 0,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: Row(
+                children: [
+                  // Settings Button
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Color(0xFF5CE1FF),
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          offset: Offset(2, 2),
+                          color: Colors.black,
+                          blurRadius: 0,
+                        ),
+                      ],
+                    ),
+                    child: IconButton(
+                      icon: Icon(
+                        Icons.settings,
+                        size: 30,
+                        color: Colors.black,
+                      ),
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (context) => SettingsScreen()),
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: 16),
+                  // Stop Button
+                  GestureDetector(
+                    onTap: () {
+                      _resetDetection();
+                      setState(() {
+                        _isCameraInitialized = false;
+                        _cameraController?.dispose();
+                      });
+                      _speak(
+                          "Camera stopped. Say start camera or tap the button to begin again.");
+                    },
+                    child: Container(
+                      padding:
+                          EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Color(0xFFFF5C5C),
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            offset: Offset(2, 2),
+                            color: Colors.black,
+                            blurRadius: 0,
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.stop_circle, color: Colors.black),
+                          SizedBox(width: 8),
+                          Text(
+                            'Stop',
+                            style: TextStyle(
+                              color: Colors.black,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          )
+          ),
         ],
       ),
     );
@@ -857,7 +1019,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Detected Problem:',
+            widget.mode == 'math' ? 'Detected Problem:' : 'Detected Text:',
             style: TextStyle(
               color: Colors.black,
               fontWeight: FontWeight.bold,
@@ -876,7 +1038,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               _buildActionButton(
-                'Yes, solve it!',
+                widget.mode == 'math' ? 'Yes, solve it!' : 'Yes, translate it!',
                 Color(0xFF5CFF8F),
                 _confirmProblem,
               ),
